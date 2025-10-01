@@ -11,9 +11,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inizializza OpenAI (l'utente dovrà inserire la sua chiave)
+# Usa la chiave API dal secrets (nascosta)
 if 'openai_api_key' not in st.session_state:
-    st.session_state.openai_api_key = ""
+    try:
+        st.session_state.openai_api_key = st.secrets["OPENAI_API_KEY"]
+    except:
+        st.session_state.openai_api_key = ""
 
 # Stati della conversazione
 class ConversationState:
@@ -267,11 +270,9 @@ st.markdown("*Virtual consultant for AI/ML solution design*")
 
 # Sidebar per API Key e info
 with st.sidebar:
-    st.header("⚙️ Configuration")
-    api_key = st.text_input("OpenAI API Key", type="password", value=st.session_state.openai_api_key)
-    if api_key:
-        st.session_state.openai_api_key = api_key
-        st.success("✅ API Key configured")
+    st.header("⚙️ About")
+    st.info("💡 Free demo powered by AI")
+    st.caption("No API key required!")
     
     st.markdown("---")
     st.header("📊 Progress")
@@ -562,4 +563,4 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 # Footer
 st.markdown("---")
-st.caption("MANOVAT - Virtual AI Solutions Consultant | Powered by GPT-4o-mini")
+st.caption("MANOVAT - Virtual AI Solutions Consultant")
