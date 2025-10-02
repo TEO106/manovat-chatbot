@@ -3,15 +3,161 @@ import openai
 from typing import Dict, List, Optional
 import json
 from datetime import datetime
+import time
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
+from io import BytesIO
 
-# Configurazione pagina
+# Configurazione pagina con palette personalizzata
 st.set_page_config(
     page_title="MANOVAT - AI Solutions Consultant",
-    page_icon="🤖",
-    layout="wide"
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Usa la chiave API dal secrets (nascosta)
+# CSS personalizzato con palette di colori
+st.markdown("""
+<style>
+    /* Nascondi elementi Streamlit di default */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display: none;}
+    
+    /* Palette colori personalizzata */
+    :root {
+        --primary-navy: #0B3C5D;
+        --secondary-teal: #00A7B5;
+        --accent-coral: #FF6B57;
+        --background-snow: #F7F9FB;
+        --text-charcoal: #2E3842;
+    }
+    
+    /* Sfondo globale */
+    .stApp {
+        background-color: #F7F9FB;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #0B3C5D;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #F7F9FB !important;
+    }
+    
+    /* Titolo principale */
+    h1 {
+        color: #0B3C5D;
+        font-weight: 700;
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Tagline */
+    .tagline {
+        color: #00A7B5;
+        font-size: 1.2rem;
+        font-weight: 400;
+        margin-bottom: 2rem;
+        font-style: italic;
+    }
+    
+    /* Messaggi chat */
+    .stChatMessage {
+        background-color: white;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(11, 60, 93, 0.1);
+    }
+    
+    /* Input utente */
+    .stChatInput {
+        border-color: #00A7B5;
+    }
+    
+    /* Bottoni */
+    .stButton > button {
+        background-color: #FF6B57;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #e55a47;
+        box-shadow: 0 4px 8px rgba(255, 107, 87, 0.3);
+    }
+    
+    /* Progress bar */
+    .stProgress > div > div {
+        background-color: #00A7B5;
+    }
+    
+    /* Testo principale */
+    p, li, span {
+        color: #2E3842;
+    }
+    
+    /* Spinner personalizzato */
+    .stSpinner > div {
+        border-top-color: #00A7B5 !important;
+    }
+    
+    /* Card nel sidebar */
+    .sidebar-card {
+        background-color: rgba(247, 249, 251, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid #00A7B5;
+    }
+    
+    /* Success message */
+    .stSuccess {
+        background-color: rgba(0, 167, 181, 0.1);
+        color: #0B3C5D;
+        border-left: 4px solid #00A7B5;
+    }
+    
+    /* Info message */
+    .stInfo {
+        background-color: rgba(11, 60, 93, 0.1);
+        color: #0B3C5D;
+        border-left: 4px solid #0B3C5D;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Password di accesso
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("<h1 style='text-align: center; color: #0B3C5D;'>🔐 MANOVAT Access</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #00A7B5; font-size: 1.1rem;'>Enter your access code to continue</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        password = st.text_input("Access Code:", type="password", key="password_input")
+        
+        if password == "Lussemburgo2023":
+            st.session_state.authenticated = True
+            st.rerun()
+        elif password:
+            st.error("Invalid access code. Please try again.")
+    st.stop()
+
+# Inizializza OpenAI con chiave dai secrets
 if 'openai_api_key' not in st.session_state:
     try:
         st.session_state.openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -48,13 +194,14 @@ if 'state' not in st.session_state:
         'human_factors_info': {},
         'timeline': '',
         'current_dataset_question': 0,
-        'current_hf_question': 0
+        'current_hf_question': 0,
+        'total_questions_asked': 0
     }
 
 def call_gpt(system_prompt: str, user_message: str, temperature: float = 0.5, max_tokens: int = 1024) -> str:
     """Chiama GPT-4o-mini con gestione errori"""
     if not st.session_state.openai_api_key:
-        return "⚠️ Per favore inserisci la tua OpenAI API Key nella sidebar."
+        return "Error: API Key not configured."
     
     try:
         client = openai.OpenAI(api_key=st.session_state.openai_api_key)
@@ -69,15 +216,20 @@ def call_gpt(system_prompt: str, user_message: str, temperature: float = 0.5, ma
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"❌ Errore nella chiamata API: {str(e)}"
+        return f"Error in API call: {str(e)}"
 
-def add_message(role: str, content: str):
+def add_message(role: str, content: str, show_to_user: bool = True):
     """Aggiungi messaggio alla cronologia"""
     st.session_state.messages.append({
         "role": role,
         "content": content,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "show_to_user": show_to_user
     })
+
+def simulate_analysis(duration: float = 0.4):
+    """Simula analisi con spinner"""
+    time.sleep(duration)
 
 def analyze_problem_and_solution():
     """Fase 1: Analisi problema e generazione soluzione"""
@@ -90,28 +242,27 @@ Output Requirements:
    - Restate the user's business problem(s) in your own words to ensure full understanding.
 
 2. Title: "Artificial Intelligence Driven Solution"
-   - Suggest the one best, single, and cohesive AI solution (traditional and/or generative), with all its DL/ML specifics (e.g., supervised ML model, recommender system, deep neural network, chatbot, LLM Agents, etc.).
-   - Describe what those specifics are (e.g., "A Random Forest is a machine learning algorithm that uses multiple decision trees to make predictions and classifications.")
+   - Suggest the one best, single, and cohesive AI solution (traditional and/or generative), with all its DL/ML specifics.
+   - Describe what those specifics are.
    
    Subtitle: "How it Works"
    - Clearly explain in details how the solution will work in operation.
 
 3. Title: "Success Metrics and Targets"
-   - Propose specific metrics and targets (e.g., accuracy, precision, recall, ROI, reduction in churn rate, etc.) to measure the solution's performance.
+   - Propose specific metrics and targets to measure the solution's performance.
    - Explain how these metrics will validate the effectiveness of the solution.
 
 4. Title: "Assumptions"
-   - Clearly state any assumptions (e.g., "customer data has been collected for at least 12 months").
+   - Clearly state any assumptions.
 
 Presentation Format:
 - Use clear, structured sections with bullet points, lists, and subheadings.
 - Maintain a professional and concise writing style.
 
 Important:
-- For each section, only provide an answer if you are certain; if unsure about any part, explicitly note your uncertainty.
-- Do not include any additional text such as introductions or conclusions beyond the structured solution.
-- Avoid generic statements.
-- Think through your answer carefully before responding."""
+- For each section, only provide an answer if you are certain.
+- Do not include any additional text such as introductions or conclusions.
+- Avoid generic statements."""
 
     user_message = f"""Business Problem: {st.session_state.data['problem_statement']}
 
@@ -121,10 +272,7 @@ Success Criteria: {st.session_state.data['success_criteria']}"""
 
 def check_dataset_needed():
     """Controlla se serve un dataset"""
-    system_prompt = """Does the proposed solution require a dataset (e.g., a structured or semi-structured collection of data needing processes like data collection, preparation, and transformation) for its development or implementation? Examples include training or fine-tuning machine learning models, creating custom analytics, or similar tasks. If yes, print only 'y'.
-
-If no dataset is required (e.g., solutions relying solely on integrating APIs like ChatGPT without additional data collection or preparation), produce absolutely no output"""
-
+    system_prompt = """Does the proposed solution require a dataset for its development or implementation? If yes, print only 'y'. If no dataset is required, produce absolutely no output"""
     response = call_gpt(system_prompt, st.session_state.data['solution'], temperature=0.2, max_tokens=1024)
     return response.strip().lower() == 'y'
 
@@ -142,19 +290,7 @@ def get_dataset_questions() -> List[str]:
 def analyze_tech_requirements(dataset_info: Optional[str] = None):
     """Analizza i requisiti tecnici"""
     if dataset_info:
-        system_prompt = """You are a very expert AI Engineer and Business Consultant. You must thoroughly analyze the feasibility of developing the AI-based SOLUTION described below, based on both DATASET AVAILABILITY and all other essential technical components (e.g., infrastructure, model design, tooling, skill sets). Your analysis should comprehensively cover the following points:
-
-1) Model & Architecture - Which AI/ML model or approach is suitable for this SOLUTION? Go deep into details. Is there a need for specialized frameworks, libraries, or hardware? Are there any constraints or requirements specific to model scalability, performance, or interpretability?
-
-2) Infrastructure & Tools - What infrastructure (e.g., cloud platform, on-prem servers) is required to train, deploy, and maintain the model? Which DevOps or MLOps tools and pipelines are necessary?
-
-3) Skill Sets & Team Requirements - Which roles or expertise are needed to implement, manage, and maintain the SOLUTION? What kind of specialized training for existing staff is required?
-
-4) Testing & Validation - How should testing be conducted to validate model accuracy and performance? Are there any required metrics or acceptance criteria?
-
-5) Data Assessment - Is a larger amount of data required to initiate the project? If yes, specify whether it should be new, more of the same, or qualitatively different. What should be the required duration for additional data collection? How could data quality be improved? What other business divisions should be involved?
-
-For each aspect, describe what the technical elements are (e.g., "A Random Forest is...", "AWS is..."). Provide comprehensive requirement lists, with no introduction or conclusion. Only answer if certain. Avoid generic statements. Answer with 400 tokens."""
+        system_prompt = """You are an expert AI Engineer and Business Consultant. Analyze the feasibility of developing the AI-based SOLUTION based on DATASET AVAILABILITY and technical components. Cover: 1) Model & Architecture, 2) Infrastructure & Tools, 3) Skill Sets & Team Requirements, 4) Testing & Validation, 5) Data Assessment. Provide comprehensive requirements. No introduction/conclusion. Only answer if certain. Avoid generic statements. Answer with 400 tokens."""
         
         user_message = f"""Information about DATASET AVAILABILITY:
 {dataset_info}
@@ -162,15 +298,7 @@ For each aspect, describe what the technical elements are (e.g., "A Random Fores
 The SOLUTION identified:
 {st.session_state.data['solution']}"""
     else:
-        system_prompt = """You are a very expert AI Engineer and Business Consultant. Analyze the feasibility of developing the AI-based SOLUTION, focusing on technical components (infrastructure, model design, tooling, skill sets). Cover:
-
-1) Model & Architecture
-2) Infrastructure & Tools  
-3) Skill Sets & Team Requirements
-4) Testing & Validation
-
-For each aspect, provide comprehensive requirements. No introduction/conclusion. Only answer if certain. Avoid generic statements. Answer with 400 tokens."""
-
+        system_prompt = """You are an expert AI Engineer and Business Consultant. Analyze the feasibility of developing the AI-based SOLUTION, focusing on technical components. Cover: 1) Model & Architecture, 2) Infrastructure & Tools, 3) Skill Sets & Team Requirements, 4) Testing & Validation. Provide comprehensive requirements. No introduction/conclusion. Only answer if certain. Answer with 400 tokens."""
         user_message = f"""No dataset available.
 
 The SOLUTION identified:
@@ -180,10 +308,7 @@ The SOLUTION identified:
 
 def check_human_factors_needed():
     """Controlla se servono considerazioni sui fattori umani"""
-    system_prompt = """Does the job involve significant physical activity or critical safety decisions? For instance, does it include factors such as physical strain (e.g., heavy lifting, awkward postures), challenging environmental conditions (e.g., poor lighting, extreme temperatures), notable hazards (e.g., dangerous machinery, hazardous substances), mandatory protective gear, or unpredictable work settings?
-
-If any apply, output only y; otherwise, output nothing."""
-
+    system_prompt = """Does the job involve significant physical activity or critical safety decisions? If any apply, output only y; otherwise, output nothing."""
     response = call_gpt(system_prompt, st.session_state.data['solution'], temperature=0.2, max_tokens=1024)
     return response.strip().lower() == 'y'
 
@@ -213,16 +338,10 @@ def analyze_human_factors(answers: Dict[str, str], detailed: bool):
     """Analizza i fattori umani"""
     answers_text = "\n".join([f"Q: {q}\nA: {a}" for q, a in answers.items()])
     
-    base_prompt = """You are an expert Human Factors engineer and Business Consultant. Analyze the human factors requirements for the SOLUTION. Make comprehensive requirement lists addressing internal personnel and development teams, with no introduction or conclusion. Only answer if certain. Avoid generic statements. Answer with 250 tokens per domain.
-
-Domains to analyze:
-1) Teams and Communication - Impact on intra-organizational interactions during development
-2) Procedures, Roles and Responsibilities - How working procedures, roles and responsibilities are impacted
-3) Human Machine Interaction - Impact on internal technical teams' interactions with equipment
-4) Skills and Training - How skills and competences are impacted"""
+    base_prompt = """You are an expert Human Factors engineer and Business Consultant. Analyze the human factors requirements for the SOLUTION. Make comprehensive requirement lists. Only answer if certain. Avoid generic statements. Answer with 250 tokens per domain. Domains: 1) Teams and Communication, 2) Procedures, Roles and Responsibilities, 3) Human Machine Interaction, 4) Skills and Training"""
 
     if detailed:
-        base_prompt += "\n5) Organisation of Work - How the organisation of work is impacted\n6) Environment - How the human-environment relation is impacted"
+        base_prompt += ", 5) Organisation of Work, 6) Environment"
 
     user_message = f"""Information about Human Factors features:
 {answers_text}
@@ -234,103 +353,132 @@ The SOLUTION identified:
 
 def generate_timeline(solution: str, tech_req: str, hf_req: str, user_timeline: str):
     """Genera la timeline del progetto"""
-    system_prompt = """You are an AI agent designed to generate development timelines for a project based on a provided technical solution description, requirements, and user's expected timeline.
+    system_prompt = """You are an AI agent designed to generate development timelines. Propose two timelines: 1) Rapid Timeline (No Procurement Delays), 2) Extended Timeline (With Procurement Delays). Break down into phases with durations. Explain rationale and assumptions. Use clear sections. Answer with 200 tokens."""
 
-Propose two effective timelines:
-
-1. **Rapid Timeline (No Procurement/Business Delays):**
-   - Assume no need for procurement or business decision delays
-   - Project can commence as soon as tomorrow
-   - Break down into key phases with detailed durations
-
-2. **Extended Timeline (With Procurement/Business Delays):**
-   - Include extra time for procurement and business decisions
-   - State these periods occur before T0 (project kickstart)
-   - Similar phase breakdown with added procurement time
-
-Ensure timelines are aligned with the technical solution and requirements. Explain rationale, outline assumptions, and detail time allocations. Use clear sections with headers and bullet points. Answer with 200 tokens."""
-
-    user_message = f"""SOLUTION:
-{solution}
-
-TECHNICAL REQUIREMENTS:
-{tech_req}
-
-HUMAN FACTORS REQUIREMENTS:
-{hf_req}
-
-USER'S EXPECTED TIMELINE:
-{user_timeline}"""
+    user_message = f"""SOLUTION: {solution}
+TECHNICAL REQUIREMENTS: {tech_req}
+HUMAN FACTORS REQUIREMENTS: {hf_req}
+USER'S EXPECTED TIMELINE: {user_timeline}"""
 
     return call_gpt(system_prompt, user_message, temperature=0.2, max_tokens=4096)
 
-# UI Layout
-st.title("🤖 MANOVAT - AI Solutions Consultant")
-st.markdown("*Virtual consultant for AI/ML solution design*")
-
-# Sidebar per API Key e info
-with st.sidebar:
-    st.header("⚙️ About")
-    st.info("💡 Free demo powered by AI")
-    st.caption("No API key required!")
+def generate_pdf_report() -> BytesIO:
+    """Genera report PDF"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
     
-    st.markdown("---")
-    st.header("📊 Progress")
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='CustomTitle', fontSize=24, textColor='#0B3C5D', spaceAfter=12, alignment=TA_CENTER, fontName='Helvetica-Bold'))
+    styles.add(ParagraphStyle(name='CustomHeading', fontSize=16, textColor='#00A7B5', spaceAfter=10, fontName='Helvetica-Bold'))
+    styles.add(ParagraphStyle(name='CustomBody', fontSize=11, textColor='#2E3842', spaceAfter=12, alignment=TA_JUSTIFY))
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("MANOVAT Analysis Report", styles['CustomTitle']))
+    story.append(Spacer(1, 0.2*inch))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}", styles['CustomBody']))
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Problem Understanding
+    story.append(Paragraph("1. PROBLEM UNDERSTANDING", styles['CustomHeading']))
+    story.append(Paragraph(st.session_state.data['problem_statement'], styles['CustomBody']))
+    story.append(Spacer(1, 0.2*inch))
+    
+    story.append(Paragraph("Success Criteria:", styles['CustomHeading']))
+    story.append(Paragraph(st.session_state.data['success_criteria'], styles['CustomBody']))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # AI Solution
+    story.append(Paragraph("2. AI SOLUTION", styles['CustomHeading']))
+    story.append(Paragraph(st.session_state.data['solution'], styles['CustomBody']))
+    story.append(PageBreak())
+    
+    # Technical Requirements
+    story.append(Paragraph("3. TECHNICAL REQUIREMENTS", styles['CustomHeading']))
+    story.append(Paragraph(st.session_state.data['tech_requirements'], styles['CustomBody']))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Human Factors
+    if st.session_state.data.get('human_factors_analysis'):
+        story.append(Paragraph("4. HUMAN FACTORS", styles['CustomHeading']))
+        story.append(Paragraph(st.session_state.data['human_factors_analysis'], styles['CustomBody']))
+        story.append(Spacer(1, 0.3*inch))
+    
+    # Timeline
+    story.append(Paragraph("5. PROJECT TIMELINE", styles['CustomHeading']))
+    story.append(Paragraph(st.session_state.data['timeline'], styles['CustomBody']))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+# UI Layout
+st.markdown("<h1 style='text-align: center;'>MANOVAT</h1>", unsafe_allow_html=True)
+st.markdown("<p class='tagline' style='text-align: center;'>Transform Business Challenges into AI-Powered Solutions</p>", unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
+    st.markdown("### Progress Tracker")
     
     progress_steps = {
         ConversationState.WELCOME: 0,
-        ConversationState.PROBLEM_UNDERSTANDING: 10,
-        ConversationState.SUCCESS_CRITERIA: 20,
-        ConversationState.ANALYZING_SOLUTION: 30,
-        ConversationState.DATASET_CHECK: 40,
-        ConversationState.DATASET_QUESTIONS: 50,
-        ConversationState.TECH_ANALYSIS: 60,
-        ConversationState.HUMAN_FACTORS_CHECK: 70,
-        ConversationState.HUMAN_FACTORS_QUESTIONS: 80,
-        ConversationState.TIMELINE: 90,
+        ConversationState.PROBLEM_UNDERSTANDING: 15,
+        ConversationState.SUCCESS_CRITERIA: 25,
+        ConversationState.ANALYZING_SOLUTION: 35,
+        ConversationState.DATASET_CHECK: 45,
+        ConversationState.DATASET_QUESTIONS: 55,
+        ConversationState.TECH_ANALYSIS: 65,
+        ConversationState.HUMAN_FACTORS_CHECK: 75,
+        ConversationState.HUMAN_FACTORS_QUESTIONS: 85,
+        ConversationState.TIMELINE: 95,
         ConversationState.COMPLETE: 100
     }
     
     current_progress = progress_steps.get(st.session_state.state, 0)
     st.progress(current_progress / 100)
     st.caption(f"{current_progress}% Complete")
+    st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("---")
-    if st.button("🔄 Reset Conversation"):
+    
+    if st.button("Reset Analysis", use_container_width=True):
         for key in list(st.session_state.keys()):
-            del st.session_state[key]
+            if key != 'authenticated':
+                del st.session_state[key]
         st.rerun()
 
 # Main conversation area
 chat_container = st.container()
 
 with chat_container:
-    # Display message history
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        if msg.get("show_to_user", True):
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
 # State machine logic
 if st.session_state.state == ConversationState.WELCOME:
     if not st.session_state.messages:
-        welcome_msg = """👋 Welcome to MANOVAT!
+        welcome_msg = """Welcome to MANOVAT!
 
-I'm your AI Solutions Consultant. I'll help you design a comprehensive AI/ML solution for your business challenge.
+I'll guide you through designing a comprehensive AI/ML solution for your business challenge.
 
-We'll go through several steps:
-1. **Understanding your problem** and success criteria
-2. **Designing an AI solution** tailored to your needs
-3. **Analyzing technical requirements** (data, infrastructure, skills)
-4. **Evaluating human factors** (if applicable)
-5. **Creating a project timeline**
+We'll explore:
+- Your business problem and objectives
+- A tailored AI solution design
+- Technical requirements analysis
+- Human factors evaluation
+- Project timeline planning
 
-Let's start! **What is your specific business problem?**
+Let's begin! **What is your specific business problem?**
 
-Please provide:
-- Organization size and context
-- Key challenges you're facing
+Please describe:
+- Your organization and context
+- Key challenges you face
 - Your objectives
-- Potential business impact"""
+- Expected business impact"""
         add_message("assistant", welcome_msg)
         st.rerun()
     
@@ -338,20 +486,21 @@ Please provide:
     if user_input:
         add_message("user", user_input)
         st.session_state.data['problem_statement'] = user_input
+        st.session_state.data['total_questions_asked'] += 1
         st.session_state.state = ConversationState.SUCCESS_CRITERIA
+        with st.spinner("Analyzing..."):
+            simulate_analysis()
         st.rerun()
 
 elif st.session_state.state == ConversationState.SUCCESS_CRITERIA:
     if st.session_state.messages[-1]["role"] != "assistant":
-        criteria_msg = """Great! Now, **what are your success criteria for this project?**
+        criteria_msg = """**What are your success criteria for this project?**
 
-For instance:
-- Specific percentage reduction in customer churn?
-- Defined improvement in sales conversions?
-- Target timeframe for achieving results?
-- ROI expectations?
-
-Be as specific as possible with metrics and targets."""
+Be specific with:
+- Target metrics (percentages, numbers)
+- Timeframes for achieving results
+- ROI expectations
+- Key performance indicators"""
         add_message("assistant", criteria_msg)
         st.rerun()
     
@@ -359,29 +508,31 @@ Be as specific as possible with metrics and targets."""
     if user_input:
         add_message("user", user_input)
         st.session_state.data['success_criteria'] = user_input
+        st.session_state.data['total_questions_asked'] += 1
         st.session_state.state = ConversationState.ANALYZING_SOLUTION
+        with st.spinner("Analyzing..."):
+            simulate_analysis()
         st.rerun()
 
 elif st.session_state.state == ConversationState.ANALYZING_SOLUTION:
-    with st.spinner("🧠 Analyzing your problem and designing AI solution..."):
+    with st.spinner("Analyzing your requirements and designing AI solution..."):
         solution = analyze_problem_and_solution()
         st.session_state.data['solution'] = solution
-        add_message("assistant", f"📋 **AI Solution Analysis Complete!**\n\n{solution}")
+        add_message("assistant", "Analysis complete. Proceeding with technical evaluation...", show_to_user=False)
         st.session_state.state = ConversationState.DATASET_CHECK
     st.rerun()
 
 elif st.session_state.state == ConversationState.DATASET_CHECK:
-    with st.spinner("🔍 Checking if dataset is needed..."):
+    with st.spinner("Analyzing..."):
         needs_dataset = check_dataset_needed()
         st.session_state.data['dataset_needed'] = needs_dataset
         
         if needs_dataset:
-            msg = "📊 This solution requires a dataset. Let me ask you some questions about data availability."
+            msg = "I need to understand your data availability. Let me ask you some questions."
             add_message("assistant", msg)
             st.session_state.state = ConversationState.DATASET_QUESTIONS
         else:
-            msg = "✅ This solution doesn't require a custom dataset. Moving to technical analysis..."
-            add_message("assistant", msg)
+            add_message("assistant", "Proceeding with analysis...", show_to_user=False)
             st.session_state.state = ConversationState.TECH_ANALYSIS
     st.rerun()
 
@@ -390,44 +541,46 @@ elif st.session_state.state == ConversationState.DATASET_QUESTIONS:
     current_q = st.session_state.data['current_dataset_question']
     
     if current_q < len(questions):
-        if st.session_state.messages[-1]["role"] != "assistant" or "Q" not in st.session_state.messages[-1]["content"]:
-            add_message("assistant", f"**Question {current_q + 1}/{len(questions)}:**\n\n{questions[current_q]}")
+        if st.session_state.messages[-1]["role"] != "assistant" or "?" not in st.session_state.messages[-1]["content"]:
+            st.session_state.data['total_questions_asked'] += 1
+            add_message("assistant", f"**Question {st.session_state.data['total_questions_asked']}:** {questions[current_q]}")
             st.rerun()
         
-        user_input = st.chat_input(f"Answer question {current_q + 1}...")
+        user_input = st.chat_input("Your answer...")
         if user_input:
             add_message("user", user_input)
             st.session_state.data['dataset_info'][questions[current_q]] = user_input
             st.session_state.data['current_dataset_question'] += 1
+            with st.spinner("Analyzing..."):
+                simulate_analysis()
             st.rerun()
     else:
         st.session_state.state = ConversationState.TECH_ANALYSIS
         st.rerun()
 
 elif st.session_state.state == ConversationState.TECH_ANALYSIS:
-    with st.spinner("🔧 Analyzing technical requirements..."):
+    with st.spinner("Conducting technical analysis..."):
         dataset_text = None
         if st.session_state.data['dataset_needed']:
             dataset_text = "\n".join([f"Q: {q}\nA: {a}" for q, a in st.session_state.data['dataset_info'].items()])
         
         tech_req = analyze_tech_requirements(dataset_text)
         st.session_state.data['tech_requirements'] = tech_req
-        add_message("assistant", f"⚙️ **Technical Requirements Analysis:**\n\n{tech_req}")
+        add_message("assistant", "Technical analysis complete. Evaluating human factors...", show_to_user=False)
         st.session_state.state = ConversationState.HUMAN_FACTORS_CHECK
     st.rerun()
 
 elif st.session_state.state == ConversationState.HUMAN_FACTORS_CHECK:
-    with st.spinner("👥 Checking human factors requirements..."):
+    with st.spinner("Analyzing..."):
         needs_hf = check_human_factors_needed()
         st.session_state.data['human_factors_needed'] = needs_hf
         
-        if needs_hf:
-            msg = "👥 This solution requires human factors analysis. I'll ask you some questions about current operations."
+        if needs_hf or True:
+            msg = "I need to understand your current operations. Please answer the following questions."
             add_message("assistant", msg)
             st.session_state.state = ConversationState.HUMAN_FACTORS_QUESTIONS
         else:
-            msg = "✅ Basic human factors analysis will be sufficient. Moving to timeline planning..."
-            add_message("assistant", msg)
+            add_message("assistant", "Finalizing analysis...", show_to_user=False)
             st.session_state.state = ConversationState.TIMELINE
     st.rerun()
 
@@ -437,45 +590,47 @@ elif st.session_state.state == ConversationState.HUMAN_FACTORS_QUESTIONS:
     current_q = st.session_state.data['current_hf_question']
     
     if current_q < len(questions):
-        if st.session_state.messages[-1]["role"] != "assistant" or "Question" not in st.session_state.messages[-1]["content"]:
-            add_message("assistant", f"**Question {current_q + 1}/{len(questions)}:**\n\n{questions[current_q]}")
+        if st.session_state.messages[-1]["role"] != "assistant" or "?" not in st.session_state.messages[-1]["content"]:
+            st.session_state.data['total_questions_asked'] += 1
+            add_message("assistant", f"**Question {st.session_state.data['total_questions_asked']}:** {questions[current_q]}")
             st.rerun()
         
-        user_input = st.chat_input(f"Answer question {current_q + 1}...")
+        user_input = st.chat_input("Your answer...")
         if user_input:
             add_message("user", user_input)
             st.session_state.data['human_factors_info'][questions[current_q]] = user_input
             st.session_state.data['current_hf_question'] += 1
+            with st.spinner("Analyzing..."):
+                simulate_analysis()
             st.rerun()
     else:
-        with st.spinner("👥 Analyzing human factors..."):
+        with st.spinner("Completing human factors analysis..."):
             hf_analysis = analyze_human_factors(
                 st.session_state.data['human_factors_info'],
                 detailed
             )
             st.session_state.data['human_factors_analysis'] = hf_analysis
-            add_message("assistant", f"👥 **Human Factors Analysis:**\n\n{hf_analysis}")
+            add_message("assistant", "Human factors analysis complete. Moving to timeline planning...", show_to_user=False)
             st.session_state.state = ConversationState.TIMELINE
         st.rerun()
 
 elif st.session_state.state == ConversationState.TIMELINE:
     if st.session_state.messages[-1]["role"] != "assistant" or "timeline" not in st.session_state.messages[-1]["content"].lower():
-        timeline_msg = """📅 **Final step!**
+        st.session_state.data['total_questions_asked'] += 1
+        timeline_msg = f"""**Question {st.session_state.data['total_questions_asked']}:** What is your planned timeline from project ideation to deployment?
 
-What is your planned timeline from project ideation to deployment?
-
-Please include:
-- Key milestones you envision
-- Any specific deadlines
-- Expected deliverables along the way"""
+Include:
+- Key milestones
+- Specific deadlines
+- Expected deliverables"""
         add_message("assistant", timeline_msg)
         st.rerun()
     
-    user_input = st.chat_input("Describe your timeline expectations...")
+    user_input = st.chat_input("Describe your timeline...")
     if user_input:
         add_message("user", user_input)
         
-        with st.spinner("📅 Generating project timeline..."):
+        with st.spinner("Generating comprehensive analysis and project timeline..."):
             hf_req = st.session_state.data.get('human_factors_analysis', 'Not applicable')
             timeline = generate_timeline(
                 st.session_state.data['solution'],
@@ -485,82 +640,34 @@ Please include:
             )
             st.session_state.data['timeline'] = timeline
             
-            final_msg = f"""🎉 **Analysis Complete!**
+            final_msg = """Analysis complete!
 
-{timeline}
-
----
-
-**📥 Download Complete Report**
-
-Your complete MANOVAT analysis is ready. Would you like me to generate a summary document?"""
+Your comprehensive MANOVAT report is ready for download."""
             add_message("assistant", final_msg)
             st.session_state.state = ConversationState.COMPLETE
         st.rerun()
 
 elif st.session_state.state == ConversationState.COMPLETE:
-    st.success("✅ Analysis completed successfully!")
+    st.success("Analysis completed successfully!")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📄 Generate Full Report", use_container_width=True):
-            report = f"""# MANOVAT - AI Solution Analysis Report
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
----
-
-## 1. PROBLEM UNDERSTANDING
-{st.session_state.data['problem_statement']}
-
-### Success Criteria
-{st.session_state.data['success_criteria']}
-
----
-
-## 2. AI SOLUTION
-{st.session_state.data['solution']}
-
----
-
-## 3. TECHNICAL REQUIREMENTS
-{st.session_state.data['tech_requirements']}
-
----
-
-## 4. HUMAN FACTORS
-{st.session_state.data.get('human_factors_analysis', 'Not applicable')}
-
----
-
-## 5. PROJECT TIMELINE
-{st.session_state.data['timeline']}
-
----
-
-## 6. DATASET INFORMATION
-{'Dataset required: YES' if st.session_state.data['dataset_needed'] else 'Dataset required: NO'}
-
-"""
-            if st.session_state.data['dataset_needed']:
-                report += "\n### Dataset Details\n"
-                for q, a in st.session_state.data['dataset_info'].items():
-                    report += f"\n**Q:** {q}\n**A:** {a}\n"
-            
-            st.download_button(
-                label="💾 Download Report (Markdown)",
-                data=report,
-                file_name=f"manovat_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
+        pdf_buffer = generate_pdf_report()
+        st.download_button(
+            label="Download Complete Report (PDF)",
+            data=pdf_buffer,
+            file_name=f"manovat_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
     
     with col2:
-        if st.button("🔄 Start New Analysis", use_container_width=True):
+        if st.button("Start New Analysis", use_container_width=True):
             for key in list(st.session_state.keys()):
-                del st.session_state[key]
+                if key != 'authenticated':
+                    del st.session_state[key]
             st.rerun()
 
-# Footer
 st.markdown("---")
-st.caption("MANOVAT - Virtual AI Solutions Consultant")
+st.markdown("<p style='text-align: center; color: #00A7B5;'>MANOVAT - Powered by Advanced AI</p>", unsafe_allow_html=True)
