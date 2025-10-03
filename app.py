@@ -16,10 +16,16 @@ st.set_page_config(
     page_title="MANOVAT - AI Solutions Consultant",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+menu_items={
+    'Get Help': None,
+    'Report a bug': None,
+    'About': None
+}
 )
 
 # CSS personalizzato con palette di colori
+st.markdown("""
 st.markdown("""
 <style>
     /* Nascondi elementi Streamlit di default */
@@ -28,25 +34,22 @@ st.markdown("""
     header {visibility: hidden;}
     .stDeployButton {display: none;}
     
-    /* AGGIUNGI QUESTE RIGHE NUOVE */
-    .stDeployButton {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    
-    button[kind="header"] {
+    /* IMPEDISCI CHIUSURA SIDEBAR */
+    [data-testid="collapsedControl"] {
         display: none !important;
     }
     
-    [data-testid="stToolbar"] {
-        display: none !important;
+    section[data-testid="stSidebar"] {
+        width: 300px !important;
+        min-width: 300px !important;
     }
     
-    [data-testid="stHeader"] {
-        display: none !important;
+    section[data-testid="stSidebar"] > div {
+        width: 300px !important;
+        min-width: 300px !important;
     }
     
-    /* Palette colori personalizzata */
+    /* Palette colori della landing page */
     :root {
         --primary-navy: #0B3C5D;
         --secondary-teal: #00A7B5;
@@ -60,26 +63,36 @@ st.markdown("""
         background-color: #F7F9FB;
     }
     
-    /* Sidebar styling */
+    /* Sidebar styling - SEMPRE VISIBILE */
     [data-testid="stSidebar"] {
-        background-color: #0B3C5D;
+        background-color: #0B3C5D !important;
+        min-width: 300px !important;
     }
     
     [data-testid="stSidebar"] * {
         color: #F7F9FB !important;
     }
     
-    /* Titolo principale */
+    [data-testid="stSidebar"] .stMarkdown {
+        color: #F7F9FB !important;
+    }
+    
+    /* Titolo principale - COLORE NAVY */
     h1 {
-        color: #0B3C5D;
+        color: #0B3C5D !important;
         font-weight: 700;
         font-size: 2.5rem;
         margin-bottom: 0.5rem;
     }
     
-    /* Tagline */
+    /* Sottotitoli - COLORE TEAL */
+    h2, h3 {
+        color: #00A7B5 !important;
+    }
+    
+    /* Tagline - COLORE TEAL */
     .tagline {
-        color: #00A7B5;
+        color: #00A7B5 !important;
         font-size: 1.2rem;
         font-weight: 400;
         margin-bottom: 2rem;
@@ -95,15 +108,23 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(11, 60, 93, 0.1);
     }
     
-    /* Input utente */
-    .stChatInput {
-        border-color: #00A7B5;
+    .stChatMessage [data-testid="stMarkdownContainer"] p {
+        color: #2E3842 !important;
     }
     
-    /* Bottoni */
+    /* Input utente */
+    .stChatInput {
+        border-color: #00A7B5 !important;
+    }
+    
+    .stChatInput input {
+        color: #2E3842 !important;
+    }
+    
+    /* BOTTONI - COLORE CORAL */
     .stButton > button {
-        background-color: #FF6B57;
-        color: white;
+        background-color: #FF6B57 !important;
+        color: white !important;
         border: none;
         border-radius: 8px;
         padding: 0.5rem 2rem;
@@ -112,48 +133,80 @@ st.markdown("""
     }
     
     .stButton > button:hover {
-        background-color: #e55a47;
+        background-color: #e55a47 !important;
         box-shadow: 0 4px 8px rgba(255, 107, 87, 0.3);
+        transform: translateY(-2px);
     }
     
-    /* Progress bar */
+    /* Download button */
+    .stDownloadButton > button {
+        background-color: #FF6B57 !important;
+        color: white !important;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+    }
+    
+    .stDownloadButton > button:hover {
+        background-color: #e55a47 !important;
+    }
+    
+    /* Progress bar - COLORE TEAL */
     .stProgress > div > div {
-        background-color: #00A7B5;
+        background-color: #00A7B5 !important;
     }
     
-    /* Testo principale */
-    p, li, span {
-        color: #2E3842;
+    /* Testo principale - CHARCOAL */
+    p, li, span, div {
+        color: #2E3842 !important;
     }
     
-    /* Spinner personalizzato */
+    /* Spinner - COLORE TEAL */
     .stSpinner > div {
         border-top-color: #00A7B5 !important;
     }
     
-    /* Card nel sidebar */
-    .sidebar-card {
+    /* Success message - TEAL */
+    .stSuccess {
+        background-color: rgba(0, 167, 181, 0.1) !important;
+        color: #0B3C5D !important;
+        border-left: 4px solid #00A7B5 !important;
+    }
+    
+    /* Info message - NAVY */
+    .stInfo {
+        background-color: rgba(11, 60, 93, 0.1) !important;
+        color: #0B3C5D !important;
+        border-left: 4px solid #0B3C5D !important;
+    }
+    
+    /* Text input per password */
+    .stTextInput input {
+        background-color: white !important;
+        color: #2E3842 !important;
+        border: 2px solid #00A7B5 !important;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #0B3C5D !important;
+        box-shadow: 0 0 0 0.2rem rgba(0, 167, 181, 0.25) !important;
+    }
+    
+    /* Chat input specifico */
+    [data-testid="stChatInput"] {
+        border-color: #00A7B5 !important;
+    }
+    
+    /* Sidebar card styling */
+    [data-testid="stSidebar"] .element-container {
         background-color: rgba(247, 249, 251, 0.1);
         border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        border-left: 4px solid #00A7B5;
-    }
-    
-    /* Success message */
-    .stSuccess {
-        background-color: rgba(0, 167, 181, 0.1);
-        color: #0B3C5D;
-        border-left: 4px solid #00A7B5;
-    }
-    
-    /* Info message */
-    .stInfo {
-        background-color: rgba(11, 60, 93, 0.1);
-        color: #0B3C5D;
-        border-left: 4px solid #0B3C5D;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
     }
 </style>
+""", unsafe_allow_html=True)
 """, unsafe_allow_html=True)
 
 # Password di accesso
