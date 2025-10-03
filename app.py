@@ -26,7 +26,6 @@ menu_items={
 
 # CSS personalizzato con palette di colori
 st.markdown("""
-st.markdown("""
 <style>
     /* Nascondi elementi Streamlit di default */
     #MainMenu {visibility: hidden;}
@@ -206,7 +205,6 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
 </style>
-""", unsafe_allow_html=True)
 """, unsafe_allow_html=True)
 
 # Password di accesso
