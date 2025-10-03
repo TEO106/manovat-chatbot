@@ -28,6 +28,24 @@ st.markdown("""
     header {visibility: hidden;}
     .stDeployButton {display: none;}
     
+    /* AGGIUNGI QUESTE RIGHE NUOVE */
+    .stDeployButton {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    button[kind="header"] {
+        display: none !important;
+    }
+    
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    
+    [data-testid="stHeader"] {
+        display: none !important;
+    }
+    
     /* Palette colori personalizzata */
     :root {
         --primary-navy: #0B3C5D;
@@ -150,7 +168,7 @@ if not st.session_state.authenticated:
     with col2:
         password = st.text_input("Access Code:", type="password", key="password_input")
         
-        if password == "Lussemburgo2023":
+        if password == "demo_2025":
             st.session_state.authenticated = True
             st.rerun()
         elif password:
